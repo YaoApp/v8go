@@ -13,7 +13,8 @@ jobs:
     strategy:
       matrix:
         go-version: ['1.25']
-        platform: [ubuntu-latest, macos-latest, windows-2022, windows-11-arm]
+        platform: [ubuntu-latest, macos-latest, windows-2022]
+        # TODO: add windows-11-arm after fixing clang -mthreads issue
     runs-on: ${{ matrix.platform }}
 
     steps:
