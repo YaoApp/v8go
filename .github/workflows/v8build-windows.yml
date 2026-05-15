@@ -9,7 +9,7 @@ jobs:
       fail-fast: false
       matrix:
         arch: [x86_64, arm64]
-    runs-on: windows-latest
+    runs-on: windows-2022
     env:
       DEPOT_TOOLS_WIN_TOOLCHAIN: '0'
       DEPOT_TOOLS_UPDATE: '0'
