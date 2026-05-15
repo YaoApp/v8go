@@ -7,11 +7,7 @@ on:
 
 jobs:
   build-windows:
-    name: Build V8 for windows ${{ matrix.arch }}
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: [x86_64, arm64]
+    name: Build V8 for windows x86_64
     runs-on: windows-2022
     env:
       DEPOT_TOOLS_WIN_TOOLCHAIN: '0'
@@ -48,10 +44,10 @@ jobs:
         shell: cmd
         run: |
           cd deps
-          python build_windows.py --arch ${{ matrix.arch }}
+          python build_windows.py --arch x86_64
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: v8_monolith-windows-${{ matrix.arch }}
-          path: deps/windows_${{ matrix.arch }}/v8_monolith.lib
+          name: v8_monolith-windows-x86_64
+          path: deps/windows_x86_64/v8_monolith.lib

@@ -82,7 +82,7 @@ treat_warnings_as_errors=false
 v8_embedder_string="-v8go"
 v8_enable_gdbjit=false
 v8_enable_i18n_support=true
-icu_use_data_file=false
+icu_use_data_file=true
 v8_enable_test_features=false
 exclude_unwind_tables=true
 v8_enable_v8_checks=false
@@ -162,6 +162,11 @@ def main():
     dest_fn = os.path.join(dest_path, 'v8_monolith.lib')
     shutil.copy(lib_fn, dest_fn)
     print("Built: %s" % dest_fn)
+
+    icu_dat = os.path.join(build_path, "icudtl.dat")
+    if os.path.exists(icu_dat):
+        shutil.copy(icu_dat, os.path.join(dest_path, "icudtl.dat"))
+        print("Copied: icudtl.dat")
 
 
 if __name__ == "__main__":
