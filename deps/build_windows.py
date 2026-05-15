@@ -251,15 +251,18 @@ def main():
     # Build the ICU data assembly first so we can patch the generated .cc
     # before the full build. ninja will generate icudtl_dat.cc via
     # make_data_assembly.py + asm_to_inline_asm.py.
-    icudtl_cc = os.path.join(build_path, "gen", "third_party", "icu", "icudtl_dat.cc")
+    # For ARM64 cross-compilation, ninja also builds x64 host tools under
+    # win_clang_x64/, so we need to patch all icudtl_dat.cc instances.
     subprocess.call(cmd([ninja_path, "-v", "-C", build_path,
                          "third_party/icu:icudata"]),
                     cwd=v8_path, env=env)
 
-    # Fix x64 symbol prefix: .globl _icudt73_dat -> .globl icudt73_dat
-    # On x64 COFF, C symbols have no underscore prefix (unlike x86).
-    # make_data_assembly.py/asm_to_inline_asm.py generate the 32-bit convention.
-    if os.path.exists(icudtl_cc):
+    # Fix symbol prefix in ALL generated icudtl_dat.cc files.
+    # .globl _icudt73_dat -> .globl icudt73_dat
+    # x64/arm64 COFF has no underscore prefix (only x86 32-bit does).
+    import glob
+    pattern = os.path.join(build_path, "**", "icudtl_dat.cc")
+    for icudtl_cc in glob.glob(pattern, recursive=True):
         with open(icudtl_cc, 'r') as f:
             cc = f.read()
         if '_icudt' in cc:
@@ -267,11 +270,11 @@ def main():
             cc = cc.replace('"_icudt', '"icudt')
             with open(icudtl_cc, 'w') as f:
                 f.write(cc)
-            print("Patched icudtl_dat.cc: removed _ prefix from symbols")
+            print("Patched %s: removed _ prefix" % icudtl_cc)
         else:
-            print("icudtl_dat.cc: no _icudt prefix found")
-    else:
-        print("WARNING: %s not found after icudata build" % icudtl_cc)
+            print("%s: no _icudt prefix found" % icudtl_cc)
+    if not glob.glob(pattern, recursive=True):
+        print("WARNING: no icudtl_dat.cc found under %s" % build_path)
 
     subprocess.check_call(cmd([ninja_path, "-v", "-C", build_path, "v8_monolith"]),
                         cwd=v8_path,
