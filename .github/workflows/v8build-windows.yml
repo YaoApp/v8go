@@ -1,12 +1,9 @@
-name: V8 Build (Windows)
+name: V8 Build (Windows x86_64)
 
-on:
-  push:
-    branches: [master]
-  workflow_dispatch:
+on: workflow_dispatch
 
 jobs:
-  build-windows:
+  build-windows-x86_64:
     name: Build V8 for windows x86_64
     runs-on: windows-2022
     env:
