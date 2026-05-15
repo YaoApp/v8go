@@ -46,9 +46,8 @@ jobs:
         if: runner.os == 'Windows'
         env:
           CGO_ENABLED: '1'
-          CC: clang --target=x86_64-w64-windows-gnu
           CXX: clang++ --target=x86_64-pc-windows-msvc -fno-exceptions
-        run: go test -v ./...
+        run: go test -v -ldflags "-extld g++" ./...
 
       - name: Upload coverage to Codecov
         if: runner.os != 'Windows'
