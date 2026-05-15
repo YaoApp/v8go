@@ -117,27 +117,89 @@ def v8deps():
 
 
 def patch_icu_for_static_data():
-    """Patch ICU BUILD.gn to use STATIC data on Windows instead of SHARED.
-    V8 11.8's ICU defaults to ICU_UTIL_DATA_SHARED on Windows, which
-    expects a DLL. We need STATIC to embed the ICU data into the monolith,
-    matching the Linux/Mac behavior."""
+    """Patch ICU BUILD.gn so Windows embeds ICU data statically, matching Linux/Mac.
+
+    V8 11.8's ICU BUILD.gn has two Windows-specific branches that assume DLL mode:
+      1) define ICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_SHARED  (tells ICU to load from DLL)
+      2) icudata target copies a pre-built icudt.dll      (no static symbol generated)
+
+    We patch both so Windows uses ICU_UTIL_DATA_STATIC and generates the icudt*_dat
+    symbol via make_data_assembly.py, exactly like Linux/Mac."""
     icu_build_gn = os.path.join(v8_path, "third_party", "icu", "BUILD.gn")
     if not os.path.exists(icu_build_gn):
         print("WARNING: %s not found, skipping ICU patch" % icu_build_gn)
         return
     with open(icu_build_gn, 'r') as f:
         content = f.read()
-    old = 'ICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_SHARED'
-    if old not in content:
-        print("ICU BUILD.gn already patched or does not contain SHARED, skipping")
+
+    patched = False
+
+    # Patch 1: Change the define from SHARED to STATIC
+    old_define = 'ICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_SHARED'
+    if old_define in content:
+        content = content.replace(old_define, 'ICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC')
+        patched = True
+        print("Patched ICU define: SHARED -> STATIC")
+
+    # Patch 2: Replace the Windows icudata target (copies icudt.dll) with the
+    # same make_data_assembly path that Linux/Mac uses.
+    # The original block looks like:
+    #   if (is_win) {
+    #     ... data_bundle = "icudt.dll" ...
+    #     copy("icudata") { ... }
+    #   } else {
+    #     data_assembly = ...
+    #     action("make_data_assembly") { ... }
+    #     source_set("icudata") { ... }
+    #   }
+    # We remove the is_win branch entirely so all non-data-file platforms
+    # go through make_data_assembly.
+    import re
+    # Match:  if (is_win) { ... copy("icudata") { ... } \n  } else {
+    # and replace with just:  {
+    # so the else-body (make_data_assembly) runs unconditionally.
+    win_icudata_pattern = (
+        r'if \(is_win\) \{\s*\n'
+        r'\s*#[^\n]*\n'           # comment line(s)
+        r'\s*#[^\n]*\n'
+        r'\s*data_bundle = "icudt\.dll"\s*\n'
+        r'\s*data_dir = "windows"\s*\n'
+        r'\s*copy\("icudata"\) \{[^}]*\}[^}]*\}'  # copy target + closing brace
+        r'\s*\} else \{'
+    )
+    if re.search(win_icudata_pattern, content):
+        content = re.sub(win_icudata_pattern, '{', content)
+        patched = True
+        print("Patched ICU icudata target: removed Windows DLL copy, using make_data_assembly")
+    else:
+        # Try a simpler fallback: just match the is_win block by key markers
+        simple_start = '    if (is_win) {\n'
+        simple_marker = 'data_bundle = "icudt.dll"'
+        simple_else = '    } else {\n'
+        if simple_marker in content:
+            # Find the is_win block containing icudt.dll and its matching else
+            idx = content.find(simple_marker)
+            # Walk backwards to find "if (is_win) {"
+            block_start = content.rfind('if (is_win) {', 0, idx)
+            # Walk forward to find "} else {"
+            block_else = content.find('} else {', idx)
+            if block_start != -1 and block_else != -1:
+                end_of_else = block_else + len('} else {')
+                # Replace "if (is_win) { ... } else {" with just "{"
+                content = content[:block_start] + '{' + content[end_of_else:]
+                patched = True
+                print("Patched ICU icudata target (fallback): removed Windows DLL path")
+
+    if not patched:
+        print("ICU BUILD.gn already patched or structure not recognized, skipping")
         return
-    content = content.replace(old, 'ICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC')
+
     with open(icu_build_gn, 'w') as f:
         f.write(content)
     git_dir = os.path.join(v8_path, "third_party", "icu", ".git")
     if os.path.exists(git_dir):
         shutil.rmtree(git_dir)
-    print("Patched ICU BUILD.gn: SHARED -> STATIC")
+    print("ICU static data patch complete")
 
 
 def v8_arch():
