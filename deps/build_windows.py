@@ -79,7 +79,6 @@ is_component_build=false
 v8_monolithic=true
 v8_use_external_startup_data=false
 treat_warnings_as_errors=false
-extra_cflags="-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH"
 v8_embedder_string="-v8go"
 v8_enable_gdbjit=false
 v8_enable_i18n_support=true
@@ -139,6 +138,7 @@ def main():
     build_path = os.path.join(deps_path, ".build", "windows_" + args.arch)
     env = os.environ.copy()
     env.setdefault("DEPOT_TOOLS_WIN_TOOLCHAIN", "0")
+    env["CL"] = env.get("CL", "") + " -D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH"
 
     is_debug = 'true' if args.debug else 'false'
     symbol_level = 1 if args.debug else 0
