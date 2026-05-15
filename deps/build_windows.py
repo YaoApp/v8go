@@ -200,23 +200,10 @@ def patch_icu_for_static_data():
     else:
         print("ICU BUILD.gn: no patches applied (content unchanged)")
 
-    # Patch 4: Fix make_data_assembly.py symbol prefix for x64 COFF.
-    # --win mode generates "_icudt73_dat" (32-bit CDECL convention) but
-    # x64 COFF expects "icudt73_dat" (no underscore prefix).
-    make_asm = os.path.join(icu_dir, "scripts", "make_data_assembly.py")
-    if os.path.exists(make_asm):
-        with open(make_asm, 'r') as f:
-            asm_content = f.read()
-        if '_icudt' in asm_content:
-            asm_content = asm_content.replace('"_icudt', '"icudt')
-            asm_content = asm_content.replace("'_icudt", "'icudt")
-            with open(make_asm, 'w') as f:
-                f.write(asm_content)
-            print("  [4] Patched make_data_assembly.py: removed _ prefix")
-        else:
-            print("  [4] make_data_assembly.py: no _icudt prefix found")
-    else:
-        print("  [4] make_data_assembly.py not found")
+    # NOTE: make_data_assembly.py patch is not done here because it may be
+    # overwritten by gclient sync or ninja regeneration. Instead, we patch
+    # the generated icudtl_dat.cc directly after the icudata build step
+    # (see main()).
 
 
 
@@ -260,6 +247,32 @@ def main():
     subprocess.check_call(cmd([gn_path, "gen", build_path, "--args=" + gen_args]),
                         cwd=v8_path,
                         env=env)
+
+    # Build the ICU data assembly first so we can patch the generated .cc
+    # before the full build. ninja will generate icudtl_dat.cc via
+    # make_data_assembly.py + asm_to_inline_asm.py.
+    icudtl_cc = os.path.join(build_path, "gen", "third_party", "icu", "icudtl_dat.cc")
+    subprocess.call(cmd([ninja_path, "-v", "-C", build_path,
+                         "third_party/icu:icudata"]),
+                    cwd=v8_path, env=env)
+
+    # Fix x64 symbol prefix: .globl _icudt73_dat -> .globl icudt73_dat
+    # On x64 COFF, C symbols have no underscore prefix (unlike x86).
+    # make_data_assembly.py/asm_to_inline_asm.py generate the 32-bit convention.
+    if os.path.exists(icudtl_cc):
+        with open(icudtl_cc, 'r') as f:
+            cc = f.read()
+        if '_icudt' in cc:
+            cc = cc.replace('.globl _icudt', '.globl icudt')
+            cc = cc.replace('"_icudt', '"icudt')
+            with open(icudtl_cc, 'w') as f:
+                f.write(cc)
+            print("Patched icudtl_dat.cc: removed _ prefix from symbols")
+        else:
+            print("icudtl_dat.cc: no _icudt prefix found")
+    else:
+        print("WARNING: %s not found after icudata build" % icudtl_cc)
+
     subprocess.check_call(cmd([ninja_path, "-v", "-C", build_path, "v8_monolith"]),
                         cwd=v8_path,
                         env=env)
