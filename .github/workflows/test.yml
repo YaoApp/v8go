@@ -42,12 +42,27 @@ jobs:
           CGO_CXXFLAGS: "-Werror"
         run: go test -v -coverprofile c.out ./...
 
+      - name: Create CXX wrapper (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          > cxx_wrapper.cmd (
+            echo @echo off
+            echo echo .%%* . ^| findstr /C:" -c " ^>nul 2^>^&1
+            echo if %%errorlevel%%==0 ^(
+            echo   "C:\Program Files\LLVM\bin\clang++.exe" --target=x86_64-pc-windows-msvc -fno-exceptions %%*
+            echo ^) else ^(
+            echo   "C:\mingw64\bin\g++.exe" %%*
+            echo ^)
+          )
+          echo --- cxx_wrapper.cmd ---
+          type cxx_wrapper.cmd
+
       - name: Go Test (Windows)
         if: runner.os == 'Windows'
         env:
           CGO_ENABLED: '1'
-          CXX: clang++
-          CGO_CXXFLAGS: "--target=x86_64-pc-windows-msvc -fno-exceptions"
+          CXX: cxx_wrapper.cmd
         run: go test -v ./...
 
       - name: Upload coverage to Codecov
