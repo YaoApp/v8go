@@ -116,6 +116,30 @@ def v8deps():
                         env=env)
 
 
+def patch_icu_for_static_data():
+    """Patch ICU BUILD.gn to use STATIC data on Windows instead of SHARED.
+    V8 11.8's ICU defaults to ICU_UTIL_DATA_SHARED on Windows, which
+    expects a DLL. We need STATIC to embed the ICU data into the monolith,
+    matching the Linux/Mac behavior."""
+    icu_build_gn = os.path.join(v8_path, "third_party", "icu", "BUILD.gn")
+    if not os.path.exists(icu_build_gn):
+        print("WARNING: %s not found, skipping ICU patch" % icu_build_gn)
+        return
+    with open(icu_build_gn, 'r') as f:
+        content = f.read()
+    old = 'ICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_SHARED'
+    if old not in content:
+        print("ICU BUILD.gn already patched or does not contain SHARED, skipping")
+        return
+    content = content.replace(old, 'ICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC')
+    with open(icu_build_gn, 'w') as f:
+        f.write(content)
+    git_dir = os.path.join(v8_path, "third_party", "icu", ".git")
+    if os.path.exists(git_dir):
+        shutil.rmtree(git_dir)
+    print("Patched ICU BUILD.gn: SHARED -> STATIC")
+
+
 def v8_arch():
     if args.arch == "x86_64":
         return "x64"
@@ -124,6 +148,7 @@ def v8_arch():
 
 def main():
     v8deps()
+    patch_icu_for_static_data()
 
     gn_path = os.path.join(tools_path, "gn.bat")
     if not os.path.exists(gn_path):
