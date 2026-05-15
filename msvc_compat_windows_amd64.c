@@ -41,3 +41,25 @@ __asm__(
     ".quad 0\n"
     ".text\n"
 );
+
+/* ---------- MSVC operator new / delete ---------- */
+
+/*
+ * v8go.cc compiled by clang++ with MSVC target emits MSVC-mangled
+ * references to global operator new/delete.  MinGW provides these
+ * with Itanium mangling (_Znwm/_ZdlPvm) which doesn't match.
+ * Forward to malloc/free via tail-call trampolines.
+ *
+ *   ??2@YAPEAX_K@Z  =  void* operator new(size_t)
+ *   ??3@YAXPEAX_K@Z  =  void  operator delete(void*, size_t)
+ */
+__asm__(
+    ".text\n"
+    ".globl \"??2@YAPEAX_K@Z\"\n"
+    "\"??2@YAPEAX_K@Z\":\n"
+    "  jmp malloc\n"
+    "\n"
+    ".globl \"??3@YAXPEAX_K@Z\"\n"
+    "\"??3@YAXPEAX_K@Z\":\n"
+    "  jmp free\n"
+);
