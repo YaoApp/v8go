@@ -110,6 +110,7 @@ def v8deps():
     env = os.environ.copy()
     env["PATH"] = tools_path + os.pathsep + env["PATH"]
     env.setdefault("DEPOT_TOOLS_WIN_TOOLCHAIN", "0")
+    env["DEPOT_TOOLS_UPDATE"] = "0"
     subprocess.check_call(cmd(["gclient", "sync", "--spec", spec]),
                         cwd=deps_path,
                         env=env)
