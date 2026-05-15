@@ -36,17 +36,6 @@ jobs:
             unzip -o -d "$dir" "$file"
           done
 
-      - name: Prepare Windows libraries
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          for dir in deps/windows_*/; do
-            if [ -f "$dir/libv8.lib" ]; then
-              cp "$dir/libv8.lib" "$dir/libv8.a"
-              echo "Created $dir/libv8.a"
-            fi
-          done
-
       - name: Go Test (Unix)
         if: runner.os != 'Windows'
         env:
