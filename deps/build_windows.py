@@ -138,7 +138,11 @@ def main():
     build_path = os.path.join(deps_path, ".build", "windows_" + args.arch)
     env = os.environ.copy()
     env.setdefault("DEPOT_TOOLS_WIN_TOOLCHAIN", "0")
-    env["CL"] = env.get("CL", "") + " -D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH"
+    cl_flags = " -D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH"
+    if v8_arch() == "arm64":
+        cl_flags += " -D_CountLeadingZeros64(x)=__builtin_clzll(x)"
+        cl_flags += " -D_CountLeadingZeros(x)=__builtin_clz(x)"
+    env["CL"] = env.get("CL", "") + cl_flags
 
     is_debug = 'true' if args.debug else 'false'
     symbol_level = 1 if args.debug else 0
