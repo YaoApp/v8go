@@ -207,6 +207,34 @@ def patch_icu_for_static_data():
 
 
 
+def patch_icudtl_cc(build_path):
+    """Fix symbol prefix in all generated icudtl_dat.cc files.
+    .globl _icudt73_dat -> .globl icudt73_dat
+    x64/arm64 COFF has no underscore prefix (only x86 32-bit does).
+    Returns the number of files patched."""
+    import glob
+    pattern = os.path.join(build_path, "**", "icudtl_dat.cc")
+    patched_count = 0
+    for icudtl_cc in glob.glob(pattern, recursive=True):
+        with open(icudtl_cc, 'r') as f:
+            cc = f.read()
+        if '_icudt' in cc:
+            cc = cc.replace('.globl _icudt', '.globl icudt')
+            cc = cc.replace('"_icudt', '"icudt')
+            with open(icudtl_cc, 'w') as f:
+                f.write(cc)
+            print("Patched %s: removed _ prefix" % icudtl_cc)
+            patched_count += 1
+        else:
+            print("%s: no _icudt prefix found (OK)" % icudtl_cc)
+    found = glob.glob(pattern, recursive=True)
+    if not found and patched_count == 0:
+        print("WARNING: no icudtl_dat.cc found under %s" % build_path)
+    else:
+        print("Found %d icudtl_dat.cc, patched %d" % (len(found) + patched_count, patched_count))
+    return patched_count
+
+
 def v8_arch():
     if args.arch == "x86_64":
         return "x64"
@@ -248,37 +276,31 @@ def main():
                         cwd=v8_path,
                         env=env)
 
-    # Build the ICU data assembly first so we can patch the generated .cc
-    # before the full build. ninja will generate icudtl_dat.cc via
-    # make_data_assembly.py + asm_to_inline_asm.py.
-    # For ARM64 cross-compilation, ninja also builds x64 host tools under
-    # win_clang_x64/, so we need to patch all icudtl_dat.cc instances.
+    # Build ICU data first, patch the generated icudtl_dat.cc, then do
+    # the full build. For ARM64, a retry loop handles x64 host toolchain.
+    print("Building ICU data target...")
     subprocess.call(cmd([ninja_path, "-v", "-C", build_path,
                          "third_party/icu:icudata"]),
                     cwd=v8_path, env=env)
 
-    # Fix symbol prefix in ALL generated icudtl_dat.cc files.
-    # .globl _icudt73_dat -> .globl icudt73_dat
-    # x64/arm64 COFF has no underscore prefix (only x86 32-bit does).
-    import glob
-    pattern = os.path.join(build_path, "**", "icudtl_dat.cc")
-    for icudtl_cc in glob.glob(pattern, recursive=True):
-        with open(icudtl_cc, 'r') as f:
-            cc = f.read()
-        if '_icudt' in cc:
-            cc = cc.replace('.globl _icudt', '.globl icudt')
-            cc = cc.replace('"_icudt', '"icudt')
-            with open(icudtl_cc, 'w') as f:
-                f.write(cc)
-            print("Patched %s: removed _ prefix" % icudtl_cc)
-        else:
-            print("%s: no _icudt prefix found" % icudtl_cc)
-    if not glob.glob(pattern, recursive=True):
-        print("WARNING: no icudtl_dat.cc found under %s" % build_path)
+    patch_icudtl_cc(build_path)
 
-    subprocess.check_call(cmd([ninja_path, "-v", "-C", build_path, "v8_monolith"]),
-                        cwd=v8_path,
-                        env=env)
+    # For ARM64 cross-compilation, ninja builds x64 host tools under
+    # win_clang_x64/. Those host tools also need ICU, but their icudtl_dat.cc
+    # is only generated when those targets are built. We do a first build
+    # attempt that may fail at the host tool link step, then patch any newly
+    # generated icudtl_dat.cc files, then retry.
+    rc = subprocess.call(cmd([ninja_path, "-v", "-C", build_path, "v8_monolith"]),
+                         cwd=v8_path, env=env)
+    if rc != 0:
+        print("First build attempt failed (rc=%d), patching newly generated icudtl_dat.cc..." % rc)
+        patched = patch_icudtl_cc(build_path)
+        if patched > 0:
+            print("Retrying full build after patching %d file(s)..." % patched)
+            subprocess.check_call(cmd([ninja_path, "-v", "-C", build_path, "v8_monolith"]),
+                                  cwd=v8_path, env=env)
+        else:
+            raise RuntimeError("Build failed and no icudtl_dat.cc files needed patching")
 
     lib_fn = os.path.join(build_path, "obj", "v8_monolith.lib")
     dest_path = os.path.join(deps_path, "windows_" + args.arch)
