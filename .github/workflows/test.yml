@@ -13,8 +13,7 @@ jobs:
     strategy:
       matrix:
         go-version: ['1.26']
-        platform: [ubuntu-latest, macos-latest, windows-2022]
-        # TODO: add windows-11-arm after fixing clang -mthreads issue
+        platform: [ubuntu-latest, macos-latest, windows-2022, windows-11-arm]
     runs-on: ${{ matrix.platform }}
 
     steps:
@@ -46,12 +45,20 @@ jobs:
           CGO_CXXFLAGS: "-Werror"
         run: go test -v -coverprofile c.out ./...
 
-      - name: Go Test (Windows)
-        if: runner.os == 'Windows'
+      - name: Go Test (Windows x64)
+        if: runner.os == 'Windows' && runner.arch == 'X64'
         env:
           CGO_ENABLED: '1'
           CC: clang --target=x86_64-pc-windows-msvc -fuse-ld=lld
           CXX: clang++ --target=x86_64-pc-windows-msvc -fuse-ld=lld -fno-exceptions
+        run: go test -v ./...
+
+      - name: Go Test (Windows ARM64)
+        if: runner.os == 'Windows' && runner.arch == 'ARM64'
+        env:
+          CGO_ENABLED: '1'
+          CC: clang --target=aarch64-pc-windows-msvc -fuse-ld=lld
+          CXX: clang++ --target=aarch64-pc-windows-msvc -fuse-ld=lld -fno-exceptions
         run: go test -v ./...
 
       - name: Upload coverage to Codecov
