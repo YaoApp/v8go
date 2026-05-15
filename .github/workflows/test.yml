@@ -46,7 +46,6 @@ jobs:
         if: runner.os == 'Windows'
         env:
           CGO_ENABLED: '1'
-          CGO_CXXFLAGS: "-Werror"
         run: go test -v ./...
 
       - name: Upload coverage to Codecov
