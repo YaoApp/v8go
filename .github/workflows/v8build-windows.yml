@@ -47,20 +47,14 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          echo "=== icudtl_dat.cc header (first 20 lines) ==="
-          head -20 deps/.build/windows_x86_64/gen/third_party/icu/icudtl_dat.cc 2>/dev/null || echo "icudtl_dat.cc not found"
+          echo "=== BUILD.gn: SHARED/STATIC lines ==="
+          grep -n "ICU_UTIL_DATA_IMPL\|is_win.*icu_use_data\|stubdata\|U_HIDE_DATA" deps/v8/third_party/icu/BUILD.gn 2>/dev/null | head -20 || echo "BUILD.gn not found"
           echo ""
-          echo "=== icudtl_dat.obj symbols ==="
-          dumpbin /symbols deps/.build/windows_x86_64/obj/third_party/icu/icudata/icudtl_dat.obj 2>/dev/null | head -30 || echo "dumpbin failed"
+          echo "=== icudtl_dat.cc header (first 5 lines) ==="
+          head -5 deps/.build/windows_x86_64/gen/third_party/icu/icudtl_dat.cc 2>/dev/null || echo "icudtl_dat.cc not found"
           echo ""
-          echo "=== Check for icudt73_dat in icudata obj ==="
-          dumpbin /symbols deps/.build/windows_x86_64/obj/third_party/icu/icudata/icudtl_dat.obj 2>/dev/null | grep -i "icudt" || echo "No icudt symbols found"
-          echo ""
-          echo "=== gen-regexp-special-case.exe.rsp contents ==="
+          echo "=== gen-regexp-special-case.exe.rsp ==="
           cat deps/.build/windows_x86_64/gen-regexp-special-case.exe.rsp 2>/dev/null || echo "rsp not found"
-          echo ""
-          echo "=== icuuc.lib.rsp contents ==="
-          cat deps/.build/windows_x86_64/obj/third_party/icu/icuuc.lib.rsp 2>/dev/null || echo "rsp not found"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
