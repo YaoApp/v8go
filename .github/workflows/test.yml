@@ -26,10 +26,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install LLVM (Windows)
-        if: runner.os == 'Windows'
-        run: choco install llvm -y
-
       - name: Unzip libv8
         shell: bash
         run: |
@@ -38,6 +34,17 @@ jobs:
             dir=$(dirname "$file")
             echo "Extracting $file to directory $dir"
             unzip -o -d "$dir" "$file"
+          done
+
+      - name: Prepare Windows libraries
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          for dir in deps/windows_*/; do
+            if [ -f "$dir/libv8.lib" ]; then
+              cp "$dir/libv8.lib" "$dir/libv8.a"
+              echo "Created $dir/libv8.a"
+            fi
           done
 
       - name: Go Test (Unix)
@@ -49,8 +56,6 @@ jobs:
       - name: Go Test (Windows)
         if: runner.os == 'Windows'
         env:
-          CC: clang
-          CXX: clang++
           CGO_ENABLED: '1'
           CGO_CXXFLAGS: "-Werror"
         run: go test -v ./...
