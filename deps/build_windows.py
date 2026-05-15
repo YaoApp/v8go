@@ -165,10 +165,13 @@ def patch_icu_for_static_data():
     else:
         print("make_data_assembly.py not found, skipping")
 
-    # Remove .git to allow modifications
+    # Remove .git to allow modifications (Windows may have read-only files)
     git_dir = os.path.join(icu_dir, ".git")
     if os.path.exists(git_dir):
-        shutil.rmtree(git_dir)
+        def rm_readonly(func, path, _exc_info):
+            os.chmod(path, 0o777)
+            func(path)
+        shutil.rmtree(git_dir, onerror=rm_readonly)
 
 
 
