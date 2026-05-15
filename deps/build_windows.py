@@ -141,54 +141,58 @@ def patch_icu_for_static_data():
         patched = True
         print("Patched ICU define: SHARED -> STATIC")
 
-    # Patch 2: Replace the Windows icudata target (copies icudt.dll) with the
-    # same make_data_assembly path that Linux/Mac uses.
-    # The original block looks like:
-    #   if (is_win) {
-    #     ... data_bundle = "icudt.dll" ...
-    #     copy("icudata") { ... }
-    #   } else {
-    #     data_assembly = ...
-    #     action("make_data_assembly") { ... }
-    #     source_set("icudata") { ... }
-    #   }
-    # We remove the is_win branch entirely so all non-data-file platforms
-    # go through make_data_assembly.
-    import re
-    # Match:  if (is_win) { ... copy("icudata") { ... } \n  } else {
-    # and replace with just:  {
-    # so the else-body (make_data_assembly) runs unconditionally.
-    win_icudata_pattern = (
-        r'if \(is_win\) \{\s*\n'
-        r'\s*#[^\n]*\n'           # comment line(s)
-        r'\s*#[^\n]*\n'
-        r'\s*data_bundle = "icudt\.dll"\s*\n'
-        r'\s*data_dir = "windows"\s*\n'
-        r'\s*copy\("icudata"\) \{[^}]*\}[^}]*\}'  # copy target + closing brace
-        r'\s*\} else \{'
-    )
-    if re.search(win_icudata_pattern, content):
-        content = re.sub(win_icudata_pattern, '{', content)
-        patched = True
-        print("Patched ICU icudata target: removed Windows DLL copy, using make_data_assembly")
-    else:
-        # Try a simpler fallback: just match the is_win block by key markers
-        simple_start = '    if (is_win) {\n'
-        simple_marker = 'data_bundle = "icudt.dll"'
-        simple_else = '    } else {\n'
-        if simple_marker in content:
-            # Find the is_win block containing icudt.dll and its matching else
-            idx = content.find(simple_marker)
-            # Walk backwards to find "if (is_win) {"
-            block_start = content.rfind('if (is_win) {', 0, idx)
-            # Walk forward to find "} else {"
-            block_else = content.find('} else {', idx)
-            if block_start != -1 and block_else != -1:
-                end_of_else = block_else + len('} else {')
-                # Replace "if (is_win) { ... } else {" with just "{"
-                content = content[:block_start] + '{' + content[end_of_else:]
+    # Patch 2: Remove the Windows DLL copy path for icudata so that
+    # make_data_assembly.py runs on all platforms (generates icudt*_dat symbol).
+    # We work line-by-line to precisely remove the if(is_win){...} else { block
+    # and its matching closing brace, leaving only the make_data_assembly body.
+    if '"icudt.dll"' in content:
+        lines = content.split('\n')
+        # Find the line containing "icudt.dll"
+        dll_line = None
+        for i, line in enumerate(lines):
+            if '"icudt.dll"' in line:
+                dll_line = i
+                break
+        if dll_line is not None:
+            # Walk backwards from dll_line to find "if (is_win) {"
+            if_line = None
+            for i in range(dll_line - 1, -1, -1):
+                if 'if (is_win)' in lines[i] and '{' in lines[i]:
+                    if_line = i
+                    break
+            # Walk forwards from dll_line to find "} else {"
+            else_line = None
+            for i in range(dll_line + 1, len(lines)):
+                stripped = lines[i].strip()
+                if stripped == '} else {':
+                    else_line = i
+                    break
+            if if_line is not None and else_line is not None:
+                # Find the closing "}" of the else block (matches the removed if)
+                # It's after the make_data_assembly source_set block
+                # Count braces from else_line+1 to find the matching close
+                brace_depth = 1
+                close_line = None
+                for i in range(else_line + 1, len(lines)):
+                    for ch in lines[i]:
+                        if ch == '{':
+                            brace_depth += 1
+                        elif ch == '}':
+                            brace_depth -= 1
+                            if brace_depth == 0:
+                                close_line = i
+                                break
+                    if close_line is not None:
+                        break
+                # Remove: if_line..else_line (the Windows DLL block + "} else {")
+                # Remove: close_line (the matching "}" for the else)
+                remove = set(range(if_line, else_line + 1))
+                if close_line is not None:
+                    remove.add(close_line)
+                lines = [l for i, l in enumerate(lines) if i not in remove]
+                content = '\n'.join(lines)
                 patched = True
-                print("Patched ICU icudata target (fallback): removed Windows DLL path")
+                print("Patched ICU icudata target: removed Windows DLL path (%d lines)" % len(remove))
 
     if not patched:
         print("ICU BUILD.gn already patched or structure not recognized, skipping")

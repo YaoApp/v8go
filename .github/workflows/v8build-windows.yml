@@ -43,6 +43,13 @@ jobs:
           cd deps
           python build_windows.py --arch x86_64
 
+      - name: Debug ICU BUILD.gn (on failure)
+        if: failure()
+        shell: bash
+        run: |
+          echo "=== ICU BUILD.gn icudata section ==="
+          grep -n -A2 -B2 "icudt\|icudata\|is_win\|make_data_assembly\|data_bundle\|SHARED\|STATIC" deps/v8/third_party/icu/BUILD.gn || echo "BUILD.gn not found"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
