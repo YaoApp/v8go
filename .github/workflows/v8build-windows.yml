@@ -43,12 +43,24 @@ jobs:
           cd deps
           python build_windows.py --arch x86_64
 
-      - name: Debug ICU BUILD.gn (on failure)
+      - name: Debug ICU data (on failure)
         if: failure()
         shell: bash
         run: |
-          echo "=== ICU BUILD.gn icudata section ==="
-          grep -n -A2 -B2 "icudt\|icudata\|is_win\|make_data_assembly\|data_bundle\|SHARED\|STATIC" deps/v8/third_party/icu/BUILD.gn || echo "BUILD.gn not found"
+          echo "=== icudtl_dat.cc header (first 20 lines) ==="
+          head -20 deps/.build/windows_x86_64/gen/third_party/icu/icudtl_dat.cc 2>/dev/null || echo "icudtl_dat.cc not found"
+          echo ""
+          echo "=== icudtl_dat.obj symbols ==="
+          dumpbin /symbols deps/.build/windows_x86_64/obj/third_party/icu/icudata/icudtl_dat.obj 2>/dev/null | head -30 || echo "dumpbin failed"
+          echo ""
+          echo "=== Check for icudt73_dat in icudata obj ==="
+          dumpbin /symbols deps/.build/windows_x86_64/obj/third_party/icu/icudata/icudtl_dat.obj 2>/dev/null | grep -i "icudt" || echo "No icudt symbols found"
+          echo ""
+          echo "=== gen-regexp-special-case.exe.rsp contents ==="
+          cat deps/.build/windows_x86_64/gen-regexp-special-case.exe.rsp 2>/dev/null || echo "rsp not found"
+          echo ""
+          echo "=== icuuc.lib.rsp contents ==="
+          cat deps/.build/windows_x86_64/obj/third_party/icu/icuuc.lib.rsp 2>/dev/null || echo "rsp not found"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

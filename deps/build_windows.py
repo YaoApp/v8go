@@ -117,93 +117,27 @@ def v8deps():
 
 
 def patch_icu_for_static_data():
-    """Patch ICU BUILD.gn so Windows embeds ICU data statically, matching Linux/Mac.
-
-    V8 11.8's ICU BUILD.gn has two Windows-specific branches that assume DLL mode:
-      1) define ICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_SHARED  (tells ICU to load from DLL)
-      2) icudata target copies a pre-built icudt.dll      (no static symbol generated)
-
-    We patch both so Windows uses ICU_UTIL_DATA_STATIC and generates the icudt*_dat
-    symbol via make_data_assembly.py, exactly like Linux/Mac."""
+    """Patch ICU BUILD.gn: SHARED -> STATIC on Windows.
+    V8 11.8's ICU config defines ICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_SHARED on
+    Windows when icu_use_data_file=false, which expects a DLL. We change it to
+    STATIC so ICU looks for the statically embedded icudt*_dat symbol instead."""
     icu_build_gn = os.path.join(v8_path, "third_party", "icu", "BUILD.gn")
     if not os.path.exists(icu_build_gn):
         print("WARNING: %s not found, skipping ICU patch" % icu_build_gn)
         return
     with open(icu_build_gn, 'r') as f:
         content = f.read()
-
-    patched = False
-
-    # Patch 1: Change the define from SHARED to STATIC
-    old_define = 'ICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_SHARED'
-    if old_define in content:
-        content = content.replace(old_define, 'ICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC')
-        patched = True
-        print("Patched ICU define: SHARED -> STATIC")
-
-    # Patch 2: Remove the Windows DLL copy path for icudata so that
-    # make_data_assembly.py runs on all platforms (generates icudt*_dat symbol).
-    # We work line-by-line to precisely remove the if(is_win){...} else { block
-    # and its matching closing brace, leaving only the make_data_assembly body.
-    if '"icudt.dll"' in content:
-        lines = content.split('\n')
-        # Find the line containing "icudt.dll"
-        dll_line = None
-        for i, line in enumerate(lines):
-            if '"icudt.dll"' in line:
-                dll_line = i
-                break
-        if dll_line is not None:
-            # Walk backwards from dll_line to find "if (is_win) {"
-            if_line = None
-            for i in range(dll_line - 1, -1, -1):
-                if 'if (is_win)' in lines[i] and '{' in lines[i]:
-                    if_line = i
-                    break
-            # Walk forwards from dll_line to find "} else {"
-            else_line = None
-            for i in range(dll_line + 1, len(lines)):
-                stripped = lines[i].strip()
-                if stripped == '} else {':
-                    else_line = i
-                    break
-            if if_line is not None and else_line is not None:
-                # Find the closing "}" of the else block (matches the removed if)
-                # It's after the make_data_assembly source_set block
-                # Count braces from else_line+1 to find the matching close
-                brace_depth = 1
-                close_line = None
-                for i in range(else_line + 1, len(lines)):
-                    for ch in lines[i]:
-                        if ch == '{':
-                            brace_depth += 1
-                        elif ch == '}':
-                            brace_depth -= 1
-                            if brace_depth == 0:
-                                close_line = i
-                                break
-                    if close_line is not None:
-                        break
-                # Remove: if_line..else_line (the Windows DLL block + "} else {")
-                # Remove: close_line (the matching "}" for the else)
-                remove = set(range(if_line, else_line + 1))
-                if close_line is not None:
-                    remove.add(close_line)
-                lines = [l for i, l in enumerate(lines) if i not in remove]
-                content = '\n'.join(lines)
-                patched = True
-                print("Patched ICU icudata target: removed Windows DLL path (%d lines)" % len(remove))
-
-    if not patched:
-        print("ICU BUILD.gn already patched or structure not recognized, skipping")
+    old = 'ICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_SHARED'
+    if old not in content:
+        print("ICU BUILD.gn: SHARED not found (already patched or newer version), skipping")
         return
-
+    content = content.replace(old, 'ICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC')
     with open(icu_build_gn, 'w') as f:
         f.write(content)
     git_dir = os.path.join(v8_path, "third_party", "icu", ".git")
     if os.path.exists(git_dir):
         shutil.rmtree(git_dir)
-    print("ICU static data patch complete")
+    print("Patched ICU BUILD.gn: SHARED -> STATIC")
 
 
 def v8_arch():
