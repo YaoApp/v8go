@@ -8,8 +8,6 @@
 
 #include <cstdlib>
 #include <cstring>
-#include <iostream>
-#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -83,18 +81,18 @@ static RtnError ExceptionError(TryCatch& try_catch,
   Local<Message> msg = try_catch.Message();
   if (!msg.IsEmpty()) {
     String::Utf8Value origin(iso, msg->GetScriptOrigin().ResourceName());
-    std::ostringstream sb;
-    sb << *origin;
+    char buf[1024];
+    int len = snprintf(buf, sizeof(buf), "%s", *origin);
     Maybe<int> line = try_catch.Message()->GetLineNumber(ctx);
     if (line.IsJust()) {
-      sb << ":" << line.ToChecked();
+      len += snprintf(buf + len, sizeof(buf) - len, ":%d", line.ToChecked());
     }
     Maybe<int> start = try_catch.Message()->GetStartColumn(ctx);
     if (start.IsJust()) {
-      sb << ":"
-         << start.ToChecked() + 1;  // + 1 to match output from stack trace
+      len += snprintf(buf + len, sizeof(buf) - len,
+                      ":%d", start.ToChecked() + 1);  // + 1 to match stack trace
     }
-    rtn.location = CopyString(sb.str());
+    rtn.location = CopyString(std::string(buf, len));
   }
 
   Local<Value> mstack;

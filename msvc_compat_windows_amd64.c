@@ -49,17 +49,40 @@ __asm__(
  * references to global operator new/delete.  MinGW provides these
  * with Itanium mangling (_Znwm/_ZdlPvm) which doesn't match.
  * Forward to malloc/free via tail-call trampolines.
- *
- *   ??2@YAPEAX_K@Z  =  void* operator new(size_t)
- *   ??3@YAXPEAX_K@Z  =  void  operator delete(void*, size_t)
  */
 __asm__(
     ".text\n"
-    ".globl \"??2@YAPEAX_K@Z\"\n"
+    ".globl \"??2@YAPEAX_K@Z\"\n"       /* operator new(size_t)          */
     "\"??2@YAPEAX_K@Z\":\n"
     "  jmp malloc\n"
     "\n"
-    ".globl \"??3@YAXPEAX_K@Z\"\n"
+    ".globl \"??3@YAXPEAX_K@Z\"\n"       /* operator delete(void*,size_t) */
     "\"??3@YAXPEAX_K@Z\":\n"
     "  jmp free\n"
+    "\n"
+    ".globl \"??_U@YAPEAX_K@Z\"\n"       /* operator new[](size_t)        */
+    "\"??_U@YAPEAX_K@Z\":\n"
+    "  jmp malloc\n"
+    "\n"
+    ".globl \"??_V@YAXPEAX@Z\"\n"        /* operator delete[](void*)      */
+    "\"??_V@YAXPEAX@Z\":\n"
+    "  jmp free\n"
+);
+
+/* ---------- MSVC STL throw helpers ---------- */
+
+/*
+ * std::vector / std::string call these on capacity or bounds errors.
+ * With -fno-exceptions the throw paths are unreachable at runtime,
+ * but the linker still needs the symbols.
+ */
+__asm__(
+    ".text\n"
+    ".globl \"?_Xlength_error@std@@YAXPEBD@Z\"\n"
+    "\"?_Xlength_error@std@@YAXPEBD@Z\":\n"
+    "  jmp abort\n"
+    "\n"
+    ".globl \"?_Xout_of_range@std@@YAXPEBD@Z\"\n"
+    "\"?_Xout_of_range@std@@YAXPEBD@Z\":\n"
+    "  jmp abort\n"
 );
