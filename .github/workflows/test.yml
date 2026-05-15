@@ -36,29 +36,6 @@ jobs:
             unzip -o -d "$dir" "$file"
           done
 
-      - name: Copy MSVC CRT libraries (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $vsPath = & "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
-          $msvcDir = Get-ChildItem "$vsPath\VC\Tools\MSVC" | Sort-Object Name -Descending | Select-Object -First 1
-          $msvcLib = "$($msvcDir.FullName)\lib\x64"
-          $sdkDir = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\Lib" | Where-Object { $_.Name -match '^\d' } | Sort-Object Name -Descending | Select-Object -First 1
-          $ucrtLib = "$($sdkDir.FullName)\ucrt\x64"
-
-          Write-Host "MSVC lib path: $msvcLib"
-          Write-Host "UCRT lib path: $ucrtLib"
-
-          $dest = "deps\windows_x86_64"
-          Copy-Item "$msvcLib\libvcruntime.lib" $dest
-          Copy-Item "$msvcLib\libcmt.lib" $dest
-          Copy-Item "$ucrtLib\libucrt.lib" $dest
-          Copy-Item "$msvcLib\libcpmt.lib" $dest
-          Copy-Item "$msvcLib\oldnames.lib" $dest
-
-          Write-Host "Copied MSVC CRT libraries:"
-          Get-ChildItem $dest -Filter *.lib | ForEach-Object { Write-Host "  $($_.Name) ($($_.Length) bytes)" }
-
       - name: Go Test (Unix)
         if: runner.os != 'Windows'
         env:
