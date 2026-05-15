@@ -182,9 +182,11 @@ def patch_icu_for_static_data():
         patched = True
 
     # Patch 3: Remove U_HIDE_DATA_SYMBOL from icudata source_set.
-    # This makes the symbol hidden; we need it visible for linking.
+    # This define makes the symbol hidden; we need it visible for linking.
+    # Remove the entire defines line containing U_HIDE_DATA_SYMBOL.
     if 'U_HIDE_DATA_SYMBOL' in content:
-        content = content.replace('"U_HIDE_DATA_SYMBOL"', '""')
+        import re as re_mod
+        content = re_mod.sub(r'\n\s*defines\s*=\s*\[\s*"U_HIDE_DATA_SYMBOL"\s*\]', '', content)
         print("  [3/4] Removed U_HIDE_DATA_SYMBOL")
         patched = True
 
