@@ -116,62 +116,140 @@ def v8deps():
                         env=env)
 
 
+def _rm_readonly(func, path, _exc_info):
+    os.chmod(path, 0o777)
+    func(path)
+
+
 def patch_icu_for_static_data():
-    """Patch ICU for static data embedding on Windows.
+    """Patch ICU for static data embedding on Windows (matching Linux/macOS).
 
-    Two patches needed:
-    1) BUILD.gn: Change ICU_UTIL_DATA_IMPL from SHARED to STATIC so ICU looks
-       for a statically linked icudt*_dat symbol instead of loading a DLL.
-    2) asm_to_inline_asm.py: The script wraps make_data_assembly's .S output
-       into __asm__() in a .cc file. On x64 Windows the .S uses "_icudt73_dat"
-       (underscore prefix) but lld-link/MSVC on x64 expects "icudt73_dat"
-       (no prefix). We strip the leading underscore from the symbol name."""
+    Four patches to BUILD.gn + one to make_data_assembly.py:
+
+    1) ICU_UTIL_DATA_IMPL: SHARED -> STATIC
+       So ICU resolves icudt*_dat as a linked-in symbol, not DLL import.
+
+    2) Remove stubdata.cpp from icuuc on Windows when icu_use_data_file=false.
+       Original BUILD.gn has `if (is_win || icu_use_data_file)` which always
+       compiles stubdata on Windows. stubdata provides an empty icudt*_dat
+       symbol that satisfies the linker, shadowing the real data. We change
+       the condition to `if (icu_use_data_file)` only.
+
+    3) Remove U_HIDE_DATA_SYMBOL from the icudata source_set.
+       This define makes the symbol internal/hidden. We need it exported.
+
+    4) Ensure icudata on Windows is a source_set (not copy of icudt.dll).
+       The original Windows path uses copy("icudata") for a prebuilt DLL.
+       We replace it with the same source_set pattern used on Linux/macOS.
+
+    5) make_data_assembly.py: Remove underscore prefix from icudt symbol.
+       --win mode generates "_icudt73_dat" (32-bit ABI) but x64 COFF
+       expects "icudt73_dat" (no prefix)."""
     icu_dir = os.path.join(v8_path, "third_party", "icu")
-
-    # Patch 1: BUILD.gn SHARED -> STATIC
     build_gn = os.path.join(icu_dir, "BUILD.gn")
-    if os.path.exists(build_gn):
-        with open(build_gn, 'r') as f:
-            content = f.read()
-        old = 'ICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_SHARED'
-        if old in content:
-            content = content.replace(old, 'ICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC')
-            with open(build_gn, 'w') as f:
-                f.write(content)
-            print("Patched ICU BUILD.gn: SHARED -> STATIC")
-        else:
-            print("ICU BUILD.gn: SHARED not found, skipping")
 
-    # Patch 2: Fix make_data_assembly.py symbol prefix for x64.
-    # --win mode generates "_icudt73_dat" (underscore prefix, 32-bit ABI),
-    # but x64 COFF uses no prefix. lld-link looks for "icudt73_dat".
+    # Remove .git first to allow modifications
+    git_dir = os.path.join(icu_dir, ".git")
+    if os.path.exists(git_dir):
+        shutil.rmtree(git_dir, onerror=_rm_readonly)
+
+    scripts_git = os.path.join(icu_dir, "scripts", ".git")
+    if os.path.exists(scripts_git):
+        shutil.rmtree(scripts_git, onerror=_rm_readonly)
+
+    if not os.path.exists(build_gn):
+        print("WARNING: %s not found, skipping ICU patches" % build_gn)
+        return
+
+    with open(build_gn, 'r') as f:
+        content = f.read()
+
+    patched = False
+
+    # Patch 1: SHARED -> STATIC
+    old_impl = 'ICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_SHARED'
+    if old_impl in content:
+        content = content.replace(old_impl, 'ICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC')
+        print("  [1/4] Patched SHARED -> STATIC")
+        patched = True
+
+    # Patch 2: Remove stubdata from Windows builds when icu_use_data_file=false.
+    # Original: `if (is_win || icu_use_data_file)`  ->  `if (icu_use_data_file)`
+    stubdata_old = 'if (is_win || icu_use_data_file)'
+    if stubdata_old in content:
+        content = content.replace(stubdata_old, 'if (icu_use_data_file)')
+        print("  [2/4] Removed is_win from stubdata condition")
+        patched = True
+
+    # Patch 3: Remove U_HIDE_DATA_SYMBOL from icudata source_set.
+    # This makes the symbol hidden; we need it visible for linking.
+    if 'U_HIDE_DATA_SYMBOL' in content:
+        content = content.replace('"U_HIDE_DATA_SYMBOL"', '""')
+        print("  [3/4] Removed U_HIDE_DATA_SYMBOL")
+        patched = True
+
+    # Patch 4: Replace Windows copy("icudata") with source_set("icudata").
+    # The original Windows block copies a prebuilt icudt.dll. We need to
+    # replace it with a source_set that compiles the inline assembly .cc.
+    # This is complex because it's a conditional block, so we use a targeted
+    # approach: change the copy() to source_set() and fix its contents.
+    #
+    # The block looks like:
+    #   if (is_win) {
+    #     copy("icudata") {
+    #       sources = [ "windows/icudt.dll" ]
+    #       outputs = [ "$root_out_dir/icudt.dll" ]
+    #     }
+    #   }
+    #
+    # We need it to be the same as the non-windows path:
+    #   source_set("icudata") {
+    #     sources = [ "$data_assembly" ]  (or inline variant)
+    #     deps = [ ":make_data_assembly" ] (or inline variant)
+    #   }
+    #
+    # The simplest approach: find and replace the Windows copy block.
+    # Since the exact format varies, we look for characteristic patterns.
+    import re
+    # Match the Windows copy("icudata") block that copies icudt.dll
+    win_copy_pattern = re.compile(
+        r'if\s*\(is_win\)\s*\{\s*\n\s*copy\("icudata"\)\s*\{[^}]*icudt\.dll[^}]*\}\s*\n\s*\}',
+        re.DOTALL
+    )
+    match = win_copy_pattern.search(content)
+    if match:
+        # Replace the entire Windows copy block with a comment
+        # The non-Windows source_set path will now be used for all platforms
+        content = content[:match.start()] + \
+            '# Windows icudata: patched to use static embedding (same as Linux/macOS)' + \
+            content[match.end():]
+        print("  [4/4] Replaced Windows copy(icudata) with static path")
+        patched = True
+    else:
+        print("  [4/4] Windows copy(icudata) block not found (may already be patched)")
+
+    if patched:
+        with open(build_gn, 'w') as f:
+            f.write(content)
+        print("Patched ICU BUILD.gn successfully")
+    else:
+        print("ICU BUILD.gn: no patches needed")
+
+    # Patch 5: Fix make_data_assembly.py symbol prefix for x64.
     make_asm = os.path.join(icu_dir, "scripts", "make_data_assembly.py")
     if os.path.exists(make_asm):
         with open(make_asm, 'r') as f:
             content = f.read()
-        # The --win branch typically outputs:
-        #   .globl _icudt{ver}_dat
-        #   _icudt{ver}_dat:
-        # We change it to output without underscore prefix on x64.
-        # Replace "_icudt%s_dat" patterns with "icudt%s_dat" in the win branch.
         if '_icudt' in content:
             content = content.replace('"_icudt', '"icudt')
             content = content.replace("'_icudt", "'icudt")
             with open(make_asm, 'w') as f:
                 f.write(content)
-            print("Patched make_data_assembly.py: removed _ prefix from icudt symbol")
+            print("  [5] Patched make_data_assembly.py: removed _ prefix")
         else:
-            print("make_data_assembly.py: no _icudt prefix found, skipping")
+            print("  [5] make_data_assembly.py: no _icudt prefix found")
     else:
-        print("make_data_assembly.py not found, skipping")
-
-    # Remove .git to allow modifications (Windows may have read-only files)
-    git_dir = os.path.join(icu_dir, ".git")
-    if os.path.exists(git_dir):
-        def rm_readonly(func, path, _exc_info):
-            os.chmod(path, 0o777)
-            func(path)
-        shutil.rmtree(git_dir, onerror=rm_readonly)
+        print("  [5] make_data_assembly.py not found")
 
 
 
