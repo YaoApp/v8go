@@ -79,6 +79,7 @@ is_component_build=false
 v8_monolithic=true
 v8_use_external_startup_data=false
 treat_warnings_as_errors=false
+extra_cflags="-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH"
 v8_embedder_string="-v8go"
 v8_enable_gdbjit=false
 v8_enable_i18n_support=true
