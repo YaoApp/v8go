@@ -36,6 +36,18 @@ jobs:
           git config --unset-all remote.origin.fetch || true
           git config --add remote.origin.fetch +refs/heads/*:refs/remotes/origin/*
 
+      - name: Fix x64 Debugging Tools for GN
+        shell: pwsh
+        run: |
+          $x64Dir = "C:\Program Files (x86)\Windows Kits\10\Debuggers\x64"
+          $arm64Dir = "C:\Program Files (x86)\Windows Kits\10\Debuggers\arm64"
+          if (-not (Test-Path $x64Dir) -and (Test-Path $arm64Dir)) {
+            New-Item -ItemType Directory -Force -Path $x64Dir | Out-Null
+            Copy-Item "$arm64Dir\dbghelp.dll" "$x64Dir\dbghelp.dll"
+            Copy-Item "$arm64Dir\dbgcore.dll" "$x64Dir\dbgcore.dll"
+            Write-Host "Created x64 Debuggers directory with arm64 placeholders"
+          }
+
       - name: Bootstrap depot_tools
         shell: cmd
         run: |
