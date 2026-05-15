@@ -117,27 +117,59 @@ def v8deps():
 
 
 def patch_icu_for_static_data():
-    """Patch ICU BUILD.gn: SHARED -> STATIC on Windows.
-    V8 11.8's ICU config defines ICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_SHARED on
-    Windows when icu_use_data_file=false, which expects a DLL. We change it to
-    STATIC so ICU looks for the statically embedded icudt*_dat symbol instead."""
-    icu_build_gn = os.path.join(v8_path, "third_party", "icu", "BUILD.gn")
-    if not os.path.exists(icu_build_gn):
-        print("WARNING: %s not found, skipping ICU patch" % icu_build_gn)
-        return
-    with open(icu_build_gn, 'r') as f:
-        content = f.read()
-    old = 'ICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_SHARED'
-    if old not in content:
-        print("ICU BUILD.gn: SHARED not found (already patched or newer version), skipping")
-        return
-    content = content.replace(old, 'ICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC')
-    with open(icu_build_gn, 'w') as f:
-        f.write(content)
-    git_dir = os.path.join(v8_path, "third_party", "icu", ".git")
+    """Patch ICU for static data embedding on Windows.
+
+    Two patches needed:
+    1) BUILD.gn: Change ICU_UTIL_DATA_IMPL from SHARED to STATIC so ICU looks
+       for a statically linked icudt*_dat symbol instead of loading a DLL.
+    2) asm_to_inline_asm.py: The script wraps make_data_assembly's .S output
+       into __asm__() in a .cc file. On x64 Windows the .S uses "_icudt73_dat"
+       (underscore prefix) but lld-link/MSVC on x64 expects "icudt73_dat"
+       (no prefix). We strip the leading underscore from the symbol name."""
+    icu_dir = os.path.join(v8_path, "third_party", "icu")
+
+    # Patch 1: BUILD.gn SHARED -> STATIC
+    build_gn = os.path.join(icu_dir, "BUILD.gn")
+    if os.path.exists(build_gn):
+        with open(build_gn, 'r') as f:
+            content = f.read()
+        old = 'ICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_SHARED'
+        if old in content:
+            content = content.replace(old, 'ICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC')
+            with open(build_gn, 'w') as f:
+                f.write(content)
+            print("Patched ICU BUILD.gn: SHARED -> STATIC")
+        else:
+            print("ICU BUILD.gn: SHARED not found, skipping")
+
+    # Patch 2: Fix make_data_assembly.py symbol prefix for x64.
+    # --win mode generates "_icudt73_dat" (underscore prefix, 32-bit ABI),
+    # but x64 COFF uses no prefix. lld-link looks for "icudt73_dat".
+    make_asm = os.path.join(icu_dir, "scripts", "make_data_assembly.py")
+    if os.path.exists(make_asm):
+        with open(make_asm, 'r') as f:
+            content = f.read()
+        # The --win branch typically outputs:
+        #   .globl _icudt{ver}_dat
+        #   _icudt{ver}_dat:
+        # We change it to output without underscore prefix on x64.
+        # Replace "_icudt%s_dat" patterns with "icudt%s_dat" in the win branch.
+        if '_icudt' in content:
+            content = content.replace('"_icudt', '"icudt')
+            content = content.replace("'_icudt", "'icudt")
+            with open(make_asm, 'w') as f:
+                f.write(content)
+            print("Patched make_data_assembly.py: removed _ prefix from icudt symbol")
+        else:
+            print("make_data_assembly.py: no _icudt prefix found, skipping")
+    else:
+        print("make_data_assembly.py not found, skipping")
+
+    # Remove .git to allow modifications
+    git_dir = os.path.join(icu_dir, ".git")
     if os.path.exists(git_dir):
         shutil.rmtree(git_dir)
-    print("Patched ICU BUILD.gn: SHARED -> STATIC")
+
 
 
 def v8_arch():
