@@ -96,7 +96,16 @@ def cmd(args):
     return ["cmd", "/c"] + args
 
 
+def reset_depot_tools():
+    """Reset depot_tools to a clean state before gclient sync.
+    The submodule checkout may have local modifications that prevent
+    depot_tools from auto-updating during gclient sync."""
+    subprocess.call(["git", "checkout", "--", "."], cwd=tools_path)
+    subprocess.call(["git", "clean", "-fd"], cwd=tools_path)
+
+
 def v8deps():
+    reset_depot_tools()
     spec = "solutions = %s" % gclient_sln
     env = os.environ.copy()
     env["PATH"] = tools_path + os.pathsep + env["PATH"]
