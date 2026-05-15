@@ -1,0 +1,45 @@
+name: V8 Build (Windows)
+
+on: workflow_dispatch
+
+jobs:
+  build-windows:
+    name: Build V8 for windows ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, arm64]
+    runs-on: windows-latest
+    env:
+      DEPOT_TOOLS_WIN_TOOLCHAIN: '0'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 1
+
+      - name: Update depot_tools fetch config
+        shell: bash
+        run: |
+          cd deps/depot_tools
+          git config --unset-all remote.origin.fetch || true
+          git config --add remote.origin.fetch +refs/heads/*:refs/remotes/origin/*
+
+      - name: Bootstrap depot_tools
+        shell: cmd
+        run: |
+          cd deps\depot_tools
+          call bootstrap\win_tools.bat
+
+      - name: Build V8
+        shell: cmd
+        run: |
+          cd deps
+          python build_windows.py --arch ${{ matrix.arch }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: v8_monolith-windows-${{ matrix.arch }}
+          path: deps/windows_${{ matrix.arch }}/v8_monolith.lib

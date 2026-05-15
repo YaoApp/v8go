@@ -11,4 +11,5 @@ c.out
 .idea/*
 /v8go.test
 deps/*/libv8.a
+deps/*/v8_monolith.lib
 deps/*/__MACOSX
