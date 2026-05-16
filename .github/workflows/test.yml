@@ -57,8 +57,8 @@ jobs:
         if: runner.os == 'Windows' && runner.arch == 'ARM64'
         env:
           CGO_ENABLED: '1'
-          CC: ${{ github.workspace }}\deps\cc_clang_arm64.cmd
-          CXX: ${{ github.workspace }}\deps\cxx_clang_arm64.cmd
+          CC: python ${{ github.workspace }}\deps\clang_arm64_cc.py
+          CXX: python ${{ github.workspace }}\deps\clang_arm64_cxx.py
         run: go test -v ./...
 
       - name: Upload coverage to Codecov
