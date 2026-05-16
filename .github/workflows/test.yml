@@ -57,8 +57,8 @@ jobs:
         if: runner.os == 'Windows' && runner.arch == 'ARM64'
         env:
           CGO_ENABLED: '1'
-          CC: clang --target=aarch64-pc-windows-msvc -fuse-ld=lld
-          CXX: clang++ --target=aarch64-pc-windows-msvc -fuse-ld=lld -fno-exceptions
+          CC: ${{ github.workspace }}\deps\cc_clang_arm64.cmd
+          CXX: ${{ github.workspace }}\deps\cxx_clang_arm64.cmd
         run: go test -v ./...
 
       - name: Upload coverage to Codecov
