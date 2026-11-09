@@ -42,7 +42,7 @@ jobs:
       - name: Go Test (Unix)
         if: runner.os != 'Windows'
         env:
-          CGO_CXXFLAGS: "-Werror"
+          CGO_CXXFLAGS: "-Werror -Wno-error=template-id-cdtor -Wno-unknown-warning-option"
         run: go test -v -coverprofile c.out ./...
 
       - name: Go Test (Windows x64)

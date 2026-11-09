@@ -37,5 +37,5 @@ jobs:
           CC: clang
           CXX: clang++
           CGO_ENABLED: '1'
-          CGO_CXXFLAGS: "-Werror"
+          CGO_CXXFLAGS: "-Werror -Wno-error=template-id-cdtor -Wno-unknown-warning-option"
         run: go test -v ./...
