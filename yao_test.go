@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	v8 "rogchap.com/v8go"
+	v8 "github.com/YaoApp/v8go"
 )
 
 func TestYaoVersionPrint(t *testing.T) {
