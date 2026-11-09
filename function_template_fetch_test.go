@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 
 	v8 "github.com/YaoApp/v8go"
@@ -40,9 +41,15 @@ func ExampleFunctionTemplate_fetch() {
 	})
 	global.Set("fetch", fetchfn, v8.ReadOnly)
 
+	// 用本地 httptest server，避免依赖外网页面内容（GitHub 页面开头空行会破坏断言）
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "<!DOCTYPE html>\n<html></html>")
+	}))
+	defer srv.Close()
+
 	ctx := v8.NewContext(iso, global)
 	defer ctx.Close()
-	val, _ := ctx.RunScript("fetch('https://github.com/YaoApp/v8go')", "")
+	val, _ := ctx.RunScript("fetch('"+srv.URL+"')", "")
 	prom, _ := val.AsPromise()
 
 	// wait for the promise to resolve
